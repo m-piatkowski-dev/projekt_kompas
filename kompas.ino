@@ -7,11 +7,13 @@
 #define TFT_RST        8 
 #define TFT_DC         9
 #define rdTOdeg        180/PI
-
+#define INCLINATION    0.08
+#define SMOOTH         0.05
+//Use hardware SPI
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 MPU9255 compass;//obiekt magnetometru
-// wykorzystanie tablic trygonometrycznych
+// wykorzystanie tablic trygonometrycznych w pamieci programu
 const float sin_tab[] PROGMEM = { 0.0000,
 0.0175, 0.0349, 0.0523, 0.0698, 0.0872, 0.1045, 0.1219, 0.1392, 0.1564,
 0.1736, 0.1908, 0.2079, 0.2249, 0.2419, 0.2588, 0.2756, 0.2924, 0.3090,
@@ -109,7 +111,7 @@ float Yoff=0;
 float x_value=0;//value after compensation
 float y_value=0;
 float previousHeading=0;
-uint8_t counter = 0;
+
 void drawCompass(int pozx, int pozy, int r);
 
 void setup(void) 
@@ -137,21 +139,22 @@ void setup(void)
     }
     else 
     {
-        tft.println("good MPU, go!"); delay(500);
         tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
         tft.setCursor(10,10);
+        tft.println("good MPU, go!"); delay(500);
+        tft.setCursor(10,30);
         tft.print("1. PWR_MGMT_REG info: ");
         tft.println(compass.read(104, 0x6B));
-        tft.setCursor(10,30);
+        tft.setCursor(10,50);
         tft.print("2.USR_STRL_REG info: ");
         tft.println(compass.read(104, 0x6A));
-        tft.setCursor(10,50);
+        tft.setCursor(10,70);
         tft.print("3.GYRO_CONFIG_REG info: ");
         tft.println(compass.read(104, 27));
-        tft.setCursor(10,70);
+        tft.setCursor(10,90);
         tft.print("4.INT_PIN_CFG_REG info: ");
         tft.println(compass.read(104, 55));
-        tft.setCursor(10,90);
+        tft.setCursor(10,110);
         tft.print("5.MAG_CNTL_REG info: ");
         tft.print(compass.read(12, 10));
         delay(2000);
@@ -166,7 +169,7 @@ void setup(void)
     if(compass.mys>y_max) y_max=compass.mys;
     if(compass.mys<y_min) y_min=compass.mys;
     tft.setCursor(5,10);
-    tft.print("GETTING MAX/MIN...");
+    tft.print("GETTING MAX/MIN MAG FIELD");
     tft.setCursor(5,30);
     tft.print(x_max);tft.print(" x_max | x_min ");tft.print(x_min);
     tft.setCursor(5,50);
@@ -174,9 +177,10 @@ void setup(void)
     delay(50);
     if(i%20==0)
     {
-      counter++;
+      static uint8_t counter;
       tft.setCursor(5, 70);
       tft.print("timer: ");tft.print(counter);tft.print(" s");
+      counter++;
     }
   }
     tft.fillScreen(ST77XX_BLACK);
@@ -210,32 +214,39 @@ compass.read_mag();
 
 x_value = Xsf * compass.mxs + Xoff;
 y_value = Ysf * compass.mys + Yoff;
-heading = (atan2f(-y_value, x_value))+PI+0.08;
+heading = (atan2f(-y_value, x_value)) + PI + INCLINATION;
 
 if(heading < 0)
    heading = 0;
 if(heading > TWO_PI)
    heading = TWO_PI;
-if(heading < (previousHeading + 0.03) && heading > (previousHeading - 0.03))
+if(heading < (previousHeading + SMOOTH) && heading > (previousHeading - SMOOTH))
   {
     heading = previousHeading;
   }
-  
-  previousHeading = heading;
+previousHeading = heading;
+
 alfa=(uint16_t)((heading)*RAD_TO_DEG);
-if(alfa == 360)
+
+if(alfa > 359)
    alfa = 0;
-  tft.setCursor(5,100);
+  tft.setCursor(5,110);
   tft.print("HD:");
   tft.print(heading);
-  tft.setCursor(5,110);
-  tft.print("ALFA:");
-  tft.print(alfa);
   tft.setCursor(5,120);
-  tft.print("TMG:");
-  tft.print(compass.total_mag_vector(compass.mxs, compass.mys, compass.mzs));
-  //Serial.print("Direction:");
-  Serial.println(alfa);
+  tft.print("AZYMUT:");
+  tft.print(alfa);
+  tft.setCursor(65,120);
+  char kierunek = 'N';
+  if(alfa>=45&&alfa<135)kierunek='E';
+  if(alfa>=135&&alfa<225)kierunek='S';
+  if(alfa>=225&&alfa<315)kierunek='W';
+  
+  tft.print("st. ");tft.print(kierunek);
+  
+  //tft.print("TMV:");
+  //tft.print(compass.total_mag_vector(compass.mxs, compass.mys, compass.mzs));
+  
   // We need delay ~28ms for allow data rate 30Hz (~33ms)
   delay(30);
 
@@ -250,18 +261,22 @@ void drawCompass(int pozx, int pozy, int r)
     tft.drawLine( pozx, pozy, (pozx - r*pgm_read_float_near(sin_tab+alfa)), (pozy + r*pgm_read_float_near(cos_tab+alfa)), ST77XX_WHITE);
     tft.drawLine( pozx, pozy, (pozx + r*pgm_read_float_near(sin_tab+alfa)), (pozy - r*pgm_read_float_near(cos_tab+alfa)), ST77XX_WHITE);
     tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    // tft.setCursor(2,2);
+    // tft.print(compass.mxs);tft.print(" mT/xa | cmp: ");tft.print(x_value);
+    // tft.setCursor(2,12);
+    // tft.print(compass.mys);tft.print(" mT/ya | cmp: ");tft.print(y_value);
+    // tft.setCursor(2,22);
     tft.setCursor(2,2);
-    tft.print(compass.mxs);tft.print(" mT/xa | cmp: ");tft.print(x_value);
+    tft.print(" mT/xa: ");tft.print(compass.mxs);
     tft.setCursor(2,12);
-    tft.print(compass.mys);tft.print(" mT/ya | cmp: ");tft.print(y_value);
-    tft.setCursor(2,22);
-    tft.print(pgm_read_float_near(sin_tab+alfa));
-    tft.setCursor(2,32);
-    tft.print(pgm_read_float_near(cos_tab+alfa));
-    tft.drawChar(78,102, 'E', ST77XX_WHITE, ST77XX_BLACK, 1),
-    tft.drawChar(38,62, 'S', ST77XX_WHITE, ST77XX_BLACK, 1),
-    tft.drawChar(78,21, 'W', ST77XX_WHITE, ST77XX_BLACK, 1),
-    tft.drawChar(118,62, 'N', ST77XX_WHITE, ST77XX_BLACK, 1),
+    tft.print(" mT/ya: ");tft.print(compass.mys);
+    //tft.print(pgm_read_float_near(sin_tab+alfa));tft.print(" :sin | cos: ");tft.print(pgm_read_float_near(cos_tab+alfa));
+
+    tft.drawChar(78,102, 'E', ST77XX_WHITE, ST77XX_BLACK, 1);
+    tft.drawChar(38,62, 'S', ST77XX_WHITE, ST77XX_BLACK, 1);
+    tft.drawChar(78,22, 'W', ST77XX_WHITE, ST77XX_BLACK, 1);
+    tft.drawChar(118,62, 'N', ST77XX_WHITE, ST77XX_BLACK, 1);
+    
     
     tft.drawCircle( 80, 64, 35, ST77XX_WHITE);
     tft.fillTriangle(140, 59, 140, 69, 150, 64, ST77XX_RED);
